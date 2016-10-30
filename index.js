@@ -79,7 +79,7 @@ let beerkbS2r
   , router
   ;
 
-if (isHttp && !process.env.PERSONAL_ROUTER_PFX)
+if (!isHttp && !process.env.PERSONAL_ROUTER_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
 
 let bPfx;
