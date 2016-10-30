@@ -34,7 +34,7 @@ if (!bFs.existsSync(letsencryptDir)) {
 }
 
 const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
-  , PERSONAL_DIGITALOCEAN_PFX = process.env.PERSONAL_DIGITALOCEAN_PFX
+  , PERSONAL_HOTRELOAD_PFX = process.env.PERSONAL_HOTRELOAD_PFX
   ;
 
 const argv = minimist(process.argv.slice(2))
@@ -86,7 +86,7 @@ let beerkbS2r
 if (!isHttp && !PERSONAL_ROUTER_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
 
-if (!isHttp && !PERSONAL_DIGITALOCEAN_PFX)
+if (!isHttp && !PERSONAL_HOTRELOAD_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
 
 
@@ -170,9 +170,9 @@ function initHotreloadServer() {
     .use(koaRouter.allowedMethods())
     .callback();
 
-  return bFs.readFileAsync(PERSONAL_DIGITALOCEAN_PFX)
+  return bFs.readFileAsync(PERSONAL_HOTRELOAD_PFX)
     .then(pfx => {
-      https.createServer({ requestCert: true, pfx }, hotreloadRequestHandler)
+      https.createServer({ requestCert: true, rejectUnauthorized: true, pfx }, hotreloadRequestHandler)
         .listen(publicHotreloadPort);
 
       console.log('hotreload server listening on port ' + highlight(publicHotreloadPort));
@@ -182,8 +182,9 @@ function initHotreloadServer() {
 function ensureCorrectDomainAndAuthorized(ctx, next) {
   const domainWithoutTopLevel = getDomainWithoutTopLevelFromHost(ctx.req.headers.host);
 
-  if (domainWithoutTopLevel !== 'hotreload.philipolsonm' || !ctx.req.connection.authorized) {
-    console.log('got hurr');
+  // TODO: find out if this is necessary.  I think any calls outside of this
+  //   domain will be unauthorized.
+  if (domainWithoutTopLevel !== 'hotreload.philipolsonm') {
     ctx.status = 404;
     return;
   }
