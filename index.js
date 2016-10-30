@@ -34,6 +34,8 @@ if (!bFs.existsSync(letsencryptDir)) {
 }
 
 const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
+  , PERSONAL_ROUTER_GID = process.env.PERSONAL_ROUTER_GID
+  , PERSONAL_ROUTER_UID = process.env.PERSONAL_ROUTER_UID
   , PERSONAL_HOTRELOAD_PFX = process.env.PERSONAL_HOTRELOAD_PFX
   ;
 
@@ -82,6 +84,12 @@ const handleRequest = (domainWithoutToplevel, req, res) => {
 let beerkbS2r
   , router
   ;
+
+if (!PERSONAL_ROUTER_GID)
+  throw new Error("environment variable 'PERSONAL_ROUTER_GID' must be set");
+
+if (!PERSONAL_ROUTER_UID)
+  throw new Error("environment variable 'PERSONAL_ROUTER_UID' must be set");
 
 if (!isHttp && !PERSONAL_ROUTER_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
@@ -133,8 +141,8 @@ function initHotreloadServer() {
         , (ctx, next) => {
           return bExec('git pull', {
               cwd: path.join(__dirname, 'public-apps', app.dir)
-              , uid: 1000
-              , gid: 100
+              , uid: PERSONAL_ROUTER_UID
+              , gid: PERSONAL_ROUTER_GID
             })
             .then(() => {
               publicApps[app.nick].setRequestListener();
