@@ -141,8 +141,8 @@ function initHotreloadServer() {
         , (ctx, next) => {
           return bExec('git pull', {
               cwd: path.join(__dirname, 'public-apps', app.dir)
-              , uid: PERSONAL_ROUTER_UID
-              , gid: PERSONAL_ROUTER_GID
+              , uid: parseInt(PERSONAL_ROUTER_UID)
+              , gid: parseInt(PERSONAL_ROUTER_GID)
             })
             .then(() => {
               publicApps[app.nick].setRequestListener();
