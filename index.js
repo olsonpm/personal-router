@@ -33,6 +33,10 @@ if (!bFs.existsSync(letsencryptDir)) {
   throw new Error("the lets-encrypt dir must exist: " + letsencryptDir);
 }
 
+const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
+  , PERSONAL_DIGITALOCEAN_PFX = process.env.PERSONAL_DIGITALOCEAN_PFX
+  ;
+
 const argv = minimist(process.argv.slice(2))
   , bExec = childProcessPromise.exec
   , fileServer = new nodeStatic.Server(letsencryptDir)
@@ -79,13 +83,11 @@ let beerkbS2r
   , router
   ;
 
-if (!isHttp && !process.env.PERSONAL_ROUTER_PFX)
+if (!isHttp && !PERSONAL_ROUTER_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
 
-let bPfx;
-if (!isHttp) {
-  bPfx = bFs.readFileAsync(process.env.PERSONAL_ROUTER_PFX);
-}
+if (!isHttp && !PERSONAL_DIGITALOCEAN_PFX)
+  throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
 
 
 //------//
@@ -103,7 +105,7 @@ if (argv.isHttp) {
     });
   });
 } else {
-  run = run.thenReturn(bPfx)
+  run = run.then(() => bFs.readFileAsync(PERSONAL_ROUTER_PFX))
     .then(pfx => {
       router = https.createServer({ pfx }, (req, res) => {
         handleRequest(getDomainWithoutTopLevelFromHost(req.headers.host), req, res);
@@ -168,12 +170,13 @@ function initHotreloadServer() {
     .use(koaRouter.allowedMethods())
     .callback();
 
-  return bPfx.then(pfx => {
-    https.createServer({ requestCert: true, pfx }, hotreloadRequestHandler)
-      .listen(publicHotreloadPort);
+  return bFs.readFileAsync(PERSONAL_DIGITALOCEAN_PFX)
+    .then(pfx => {
+      https.createServer({ requestCert: true, pfx }, hotreloadRequestHandler)
+        .listen(publicHotreloadPort);
 
-    console.log('hotreload server listening on port ' + highlight(publicHotreloadPort));
-  });
+      console.log('hotreload server listening on port ' + highlight(publicHotreloadPort));
+    });
 }
 
 function ensureCorrectDomainAndAuthorized(ctx, next) {
