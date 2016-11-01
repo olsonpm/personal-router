@@ -29,6 +29,8 @@ const bFs = bPromise.promisifyAll(require('fs'))
 // Init //
 //------//
 
+const mutableSet = getMutableSet();
+
 const letsencryptDir = path.join(__dirname, 'lets-encrypt');
 
 if (!bFs.existsSync(letsencryptDir))
@@ -74,9 +76,12 @@ const handleRequest = (domainWithoutToplevel, req, res) => {
     if (strStartsWith(req.url, '/.well-known')) {
       fileServer.serve(req, res);
     } else {
-      proxy.web(req, res, {
-        target: `http://localhost:${miscMusicPort}`
-      });
+      proxy.web(
+        req
+        , res
+        , { target: `http://localhost:${miscMusicPort}` }
+        , e => console.error(e)
+      );
     }
   } else if (domainWithoutToplevel === 'philipolsonm') {
     rootRedirect(req, res);
@@ -99,7 +104,7 @@ if (!isHttp && !PERSONAL_ROUTER_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
 
 if (!isHttp && !PERSONAL_HOTRELOAD_PFX)
-  throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
+  throw new Error("environment variable 'PERSONAL_HOTRELOAD_PFX' must be set");
 
 
 //------//
@@ -110,7 +115,7 @@ if (!isHttp) initHotreloadServer();
 
 let run = initBeerkbS2r();
 
-if (argv.isHttp) {
+if (isHttp) {
   run = run.then(() => {
     router = http.createServer((req, res) => {
       handleRequest(getDomainWithoutTopLevelFromHost(req.headers.host), req, res);
@@ -131,10 +136,38 @@ run.then(initPublicApps)
     console.log('public router listening on port ' + highlight(publicRouterPort));
   });
 
+if (!isHttp) {
+  (new Koa()).use(ctx => {
+      const domainWithoutTopLevel = getDomainWithoutTopLevelFromHost(ctx.req.headers.host);
+      return redirectOr404(domainWithoutTopLevel, ctx);
+    })
+    .listen(80);
+
+  console.log('http -> https redirect server listening on port ' + highlight('80'));
+}
 
 //-------------//
 // Helper Fxns //
 //-------------//
+
+const httpsRedirect = r.curry(
+  (domain, ctx) => { ctx.status = 308; return ctx.redirect(`https://${domain}.com`); }
+);
+const domainsToHttpsRedirect = r.pipe(
+  r.values
+  , r.map(r.prop('domain'))
+  , r.reduce(
+    (res, cur) => mutableSet(cur, httpsRedirect(cur), res)
+    , {}
+  )
+  , r.merge({ philipolsonm: httpsRedirect('philipolsonm') })
+)(publicApps);
+
+const koa404 = r.always(void 0);
+
+function redirectOr404(domainWithoutToplevel, ctx) {
+  return r.propOr(koa404, domainWithoutToplevel, domainsToHttpsRedirect)(ctx);
+}
 
 function initHotreloadServer() {
   r.pipe(
@@ -335,4 +368,10 @@ function getRootRedirect() {
       return ctx.redirect(redirectUrl);
     })
     .callback();
+}
+
+function getMutableSet() {
+  return r.curry(
+    (prop, val, obj) => { obj[prop] = val; return obj; }
+  );
 }
