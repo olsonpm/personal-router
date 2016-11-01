@@ -14,6 +14,7 @@ const bFs = bPromise.promisifyAll(require('fs'))
   , https = require('https')
   , Koa = require('koa')
   , koaRouter = require('koa-router')()
+  , koaStatic = require('koa-static')
   , minimist = require('minimist')
   , nodeStatic = require('node-static')
   , path = require('path')
@@ -29,9 +30,9 @@ const bFs = bPromise.promisifyAll(require('fs'))
 //------//
 
 const letsencryptDir = path.join(__dirname, 'lets-encrypt');
-if (!bFs.existsSync(letsencryptDir)) {
+
+if (!bFs.existsSync(letsencryptDir))
   throw new Error("the lets-encrypt dir must exist: " + letsencryptDir);
-}
 
 const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
   , PERSONAL_ROUTER_GID = process.env.PERSONAL_ROUTER_GID
@@ -51,6 +52,7 @@ const argv = minimist(process.argv.slice(2))
   , publicHotreloadPort = 8443
   , miscMusicPort = 8888
   , reload = requireReload(require)
+  , rootRedirect = getRootRedirect()
   , strStartsWith = getStrStartsWith()
   ;
 
@@ -76,6 +78,8 @@ const handleRequest = (domainWithoutToplevel, req, res) => {
         target: `http://localhost:${miscMusicPort}`
       });
     }
+  } else if (domainWithoutToplevel === 'philipolsonm') {
+    rootRedirect(req, res);
   } else {
     return r.pathOr(send404, [domainToNick[domainWithoutToplevel], 'requestListener'], publicApps)(req, res);
   }
@@ -212,8 +216,6 @@ function initPublicApps() {
 }
 
 function getPublicApps() {
-  const letsencryptDir = path.join(__dirname, 'lets-encrypt');
-
   return r.indexBy(
     r.prop('nick')
     , [
@@ -320,4 +322,17 @@ function getInvoke() {
 function send404(req, res) {
   res.statusCode = '404';
   res.end('Resource Not Found');
+}
+
+function getRootRedirect() {
+  const protocol = (isHttp) ? 'http' : 'https'
+    , redirectUrl = `${protocol}://home.philipolsonm.com`;
+
+  return (new Koa())
+    .use(koaStatic(letsencryptDir))
+    .use(ctx => {
+      ctx.status = 307;
+      return ctx.redirect(redirectUrl);
+    })
+    .callback();
 }
