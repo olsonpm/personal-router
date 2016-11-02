@@ -137,7 +137,8 @@ run.then(initPublicApps)
   });
 
 if (!isHttp) {
-  (new Koa()).use(ctx => {
+  (new Koa()).use(koaStatic(letsencryptDir, { hidden: true }))
+    .use(ctx => {
       const domainWithoutTopLevel = getDomainWithoutTopLevelFromHost(ctx.req.headers.host);
       return redirectOr404(domainWithoutTopLevel, ctx);
     })
@@ -362,7 +363,7 @@ function getRootRedirect() {
     , redirectUrl = `${protocol}://home.philipolsonm.com`;
 
   return (new Koa())
-    .use(koaStatic(letsencryptDir))
+    .use(koaStatic(letsencryptDir, { hidden: true }))
     .use(ctx => {
       ctx.status = 307;
       return ctx.redirect(redirectUrl);
