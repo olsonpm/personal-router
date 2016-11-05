@@ -317,6 +317,8 @@ function getPublicApps() {
 }
 
 function getDomainWithoutTopLevelFromHost(host) {
+  if (!host) return '';
+
   let i = host.length
     , done = false
     ;
