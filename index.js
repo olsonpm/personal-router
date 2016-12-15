@@ -199,7 +199,7 @@ function initHotreloadServer() {
   koaRouter.post(
     '/beerkbS2r'
     , (ctx, next) => {
-      beerkbS2r.destroy(() => {
+      beerkbS2r.server.destroy(() => {
         initBeerkbS2r()
           .then(() => {
             publicApps.beerkb.setRequestListener();
