@@ -26,6 +26,7 @@
     "koa-router": "^7.0.1",
     "koa-static": "^3.0.0",
     "minimist": "^1.2.0",
+    "mkdirp": "^0.5.1",
     "node-static": "^0.7.9",
     "portfinder": "^1.0.7",
     "ramda": "^0.22.1",

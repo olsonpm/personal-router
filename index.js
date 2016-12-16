@@ -16,6 +16,7 @@ const bFs = bPromise.promisifyAll(require('fs'))
   , koaRouter = require('koa-router')()
   , koaStatic = require('koa-static')
   , minimist = require('minimist')
+  , mkdirp = require('mkdirp')
   , nodeStatic = require('node-static')
   , path = require('path')
   , httpProxy = require('http-proxy')
@@ -32,9 +33,7 @@ const bFs = bPromise.promisifyAll(require('fs'))
 const mutableSet = getMutableSet();
 
 const letsencryptDir = path.join(__dirname, 'lets-encrypt');
-
-if (!bFs.existsSync(letsencryptDir))
-  throw new Error("the lets-encrypt dir must exist: " + letsencryptDir);
+mkdirp.sync(letsencryptDir);
 
 const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
   , PERSONAL_ROUTER_GID = process.env.PERSONAL_ROUTER_GID
@@ -199,15 +198,19 @@ function initHotreloadServer() {
   koaRouter.post(
     '/beerkbS2r'
     , (ctx, next) => {
-      beerkbS2r.server.destroy(() => {
-        initBeerkbS2r()
-          .then(() => {
-            publicApps.beerkb.setRequestListener();
-            publicApps.beerkbTest.setRequestListener();
-            ctx.body = 'beerkbS2r, beerkb and beerkbTest reloaded successfully';
-            return next();
-          });
-      });
+      return beerkbS2r.server.destroy()
+        .then(() => bExec('git pull', {
+          cwd: path.join(__dirname, 'internal-servers/beerkb-internal-s2r')
+          , uid: parseInt(PERSONAL_ROUTER_UID)
+          , gid: parseInt(PERSONAL_ROUTER_GID)
+        }))
+        .then(initBeerkbS2r)
+        .then(() => {
+          publicApps.beerkb.setRequestListener();
+          publicApps.beerkbTest.setRequestListener();
+          ctx.body = 'beerkbS2r, beerkb and beerkbTest reloaded successfully';
+          return next();
+        });
     }
   );
 
