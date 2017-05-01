@@ -23,6 +23,11 @@ cd ../home-test || exit
 git checkout release-test
 cd ../ || exit
 
+git clone https://github.com/olsonpm/twearch.git twearch
+cd twearch || exit
+git checkout release-prod
+cd ../ || exit
+
 git clone https://github.com/olsonpm/tweet-ticker.git tweet-ticker
 cp -r tweet-ticker tweet-ticker-test
 cd tweet-ticker || exit

@@ -36,25 +36,26 @@ const letsencryptDir = path.join(__dirname, 'lets-encrypt');
 mkdirp.sync(letsencryptDir);
 
 const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
-  , PERSONAL_ROUTER_GID = process.env.PERSONAL_ROUTER_GID
-  , PERSONAL_ROUTER_UID = process.env.PERSONAL_ROUTER_UID
   , PERSONAL_HOTRELOAD_PFX = process.env.PERSONAL_HOTRELOAD_PFX
   ;
+
 
 const argv = minimist(process.argv.slice(2))
   , bExec = childProcessPromise.exec
   , fileServer = new nodeStatic.Server(letsencryptDir)
+  , gid = 0
   , hotreloadApp = new Koa()
   , highlight = chalk.green
   , invoke = getInvoke()
   , isHttp = argv.isHttp
+  , miscMusicPort = 8888
   , proxy = httpProxy.createProxyServer()
   , publicRouterPort = (isHttp) ? 80: 443
   , publicHotreloadPort = 8443
-  , miscMusicPort = 8888
   , reload = requireReload(require)
   , rootRedirect = getRootRedirect()
   , strStartsWith = getStrStartsWith()
+  , uid = 0
   ;
 
 const publicApps = getPublicApps();
@@ -92,12 +93,6 @@ const handleRequest = (domainWithoutToplevel, req, res) => {
 let beerkbS2r
   , router
   ;
-
-if (!PERSONAL_ROUTER_GID)
-  throw new Error("environment variable 'PERSONAL_ROUTER_GID' must be set");
-
-if (!PERSONAL_ROUTER_UID)
-  throw new Error("environment variable 'PERSONAL_ROUTER_UID' must be set");
 
 if (!isHttp && !PERSONAL_ROUTER_PFX)
   throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
@@ -156,6 +151,7 @@ const httpsRedirect = r.curry(
 const domainsToHttpsRedirect = r.pipe(
   r.values
   , r.map(r.prop('domain'))
+  , r.concat(['misc-music', 'twearch'])
   , r.reduce(
     (res, cur) => mutableSet(cur, httpsRedirect(cur), res)
     , {}
@@ -178,8 +174,8 @@ function initHotreloadServer() {
         , (ctx, next) => {
           return bExec('git pull', {
               cwd: path.join(__dirname, 'public-apps', app.dir)
-              , uid: parseInt(PERSONAL_ROUTER_UID)
-              , gid: parseInt(PERSONAL_ROUTER_GID)
+              , uid: 0
+              , gid: 0
             })
             .then(() => {
               publicApps[app.nick].setRequestListener();
@@ -201,8 +197,8 @@ function initHotreloadServer() {
       return beerkbS2r.server.destroy()
         .then(() => bExec('git pull', {
           cwd: path.join(__dirname, 'internal-servers/beerkb-internal-s2r')
-          , uid: parseInt(PERSONAL_ROUTER_UID)
-          , gid: parseInt(PERSONAL_ROUTER_GID)
+          , uid
+          , gid
         }))
         .then(initBeerkbS2r)
         .then(() => {
@@ -289,6 +285,15 @@ function getPublicApps() {
         }
       },
       {
+        domain: 'twearch.philipolsonm'
+        , nick: 'twearch'
+        , dir: 'philipolsonm/twearch/'
+        , setRequestListener() {
+          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack')
+            .getRequestListener(letsencryptDir, router, this.domain + '.com');
+        }
+      },
+      {
         domain: 'tweet-ticker-test.philipolsonm'
         , nick: 'tweetTickerTest'
         , dir: 'philipolsonm/tweet-ticker-test/'
@@ -354,11 +359,15 @@ function getStrStartsWith() {
 
 function getInvoke() {
   return r.curry(
-    (prop, obj) => r.pipe(r.prop, r.bind(r.__, obj), r.call(r.__, undefined))(prop, obj)
+    (prop, obj) => r.pipe(
+      r.prop
+      , r.bind(r.__, obj)
+      , r.call(r.__, undefined)
+    )(prop, obj)
   );
 }
 
-function send404(req, res) {
+function send404(_req, res) {
   res.statusCode = '404';
   res.end('Resource Not Found');
 }
