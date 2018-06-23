@@ -7,8 +7,10 @@
 
 const bPromise = require('bluebird');
 
-const bFs = bPromise.promisifyAll(require('fs'))
+const appConfig = require('./app-config.js')
+  , bFs = bPromise.promisifyAll(require('fs'))
   , chalk = require('chalk')
+  , checkCertAndKeyDaily = require('./check-cert-and-key-daily')
   , childProcessPromise = require('child-process-promise')
   , http = require('http')
   , https = require('https')
@@ -35,9 +37,8 @@ const mutableSet = getMutableSet();
 const letsencryptDir = path.join(__dirname, 'lets-encrypt');
 mkdirp.sync(letsencryptDir);
 
-const PERSONAL_ROUTER_PFX = process.env.PERSONAL_ROUTER_PFX
-  , PERSONAL_HOTRELOAD_PFX = process.env.PERSONAL_HOTRELOAD_PFX
-  ;
+const { pathToCert, pathToKey } = appConfig
+  , PERSONAL_HOTRELOAD_PFX = process.env.PERSONAL_HOTRELOAD_PFX;
 
 
 const argv = minimist(process.argv.slice(2))
@@ -94,8 +95,8 @@ let beerkbS2r
   , router
   ;
 
-if (!isHttp && !PERSONAL_ROUTER_PFX)
-  throw new Error("environment variable 'PERSONAL_ROUTER_PFX' must be set");
+if (!isHttp && !(pathToCert && pathToKey))
+  throw new Error("pathToCert and pathToKey are mandatory with https")
 
 if (!isHttp && !PERSONAL_HOTRELOAD_PFX)
   throw new Error("environment variable 'PERSONAL_HOTRELOAD_PFX' must be set");
@@ -116,11 +117,16 @@ if (isHttp) {
     });
   });
 } else {
-  run = run.then(() => bFs.readFileAsync(PERSONAL_ROUTER_PFX))
-    .then(pfx => {
-      router = https.createServer({ pfx }, (req, res) => {
+  run = run.then(() => Promise.all([
+      bFs.readFileAsync(pathToCert)
+      , bFs.readFileAsync(pathToKey)
+    ]))
+    .then(([cert, key]) => {
+      router = https.createServer({ cert, key }, (req, res) => {
         handleRequest(getDomainWithoutTopLevelFromHost(req.headers.host), req, res);
       });
+
+      checkCertAndKeyDaily(router, { pathToCert, pathToKey })
     });
 }
 

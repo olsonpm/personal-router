@@ -1,4 +1,5 @@
+/app-config.js
+/internal-servers
 /node_modules
 /public-apps
-/internal-servers
 /test.js
