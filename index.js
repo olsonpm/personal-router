@@ -10,7 +10,6 @@ const bPromise = require('bluebird');
 const appConfig = require('./app-config.js')
   , bFs = bPromise.promisifyAll(require('fs'))
   , chalk = require('chalk')
-  , checkCertAndKeyDaily = require('./check-cert-and-key-daily')
   , childProcessPromise = require('child-process-promise')
   , http = require('http')
   , https = require('https')
@@ -23,7 +22,6 @@ const appConfig = require('./app-config.js')
   , path = require('path')
   , httpProxy = require('http-proxy')
   , r = require('ramda')
-  , requireReload = require('require-reload')
   ;
 
 
@@ -37,23 +35,18 @@ const mutableSet = getMutableSet();
 const letsencryptDir = path.join(__dirname, 'lets-encrypt');
 mkdirp.sync(letsencryptDir);
 
-const { pathToCert, pathToKey } = appConfig
-  , PERSONAL_HOTRELOAD_PFX = process.env.PERSONAL_HOTRELOAD_PFX;
-
+const { pathToCert, pathToKey } = appConfig;
 
 const argv = minimist(process.argv.slice(2))
   , bExec = childProcessPromise.exec
   , fileServer = new nodeStatic.Server(letsencryptDir)
   , gid = 0
-  , hotreloadApp = new Koa()
   , highlight = chalk.green
   , invoke = getInvoke()
   , isHttp = argv.isHttp
   , miscMusicPort = 8888
   , proxy = httpProxy.createProxyServer()
-  , publicRouterPort = (isHttp) ? 80: 443
-  , publicHotreloadPort = 8443
-  , reload = requireReload(require)
+  , publicRouterPort = (isHttp) ? 8123: 8234
   , rootRedirect = getRootRedirect()
   , strStartsWith = getStrStartsWith()
   , uid = 0
@@ -98,15 +91,11 @@ let beerkbS2r
 if (!isHttp && !(pathToCert && pathToKey))
   throw new Error("pathToCert and pathToKey are mandatory with https")
 
-if (!isHttp && !PERSONAL_HOTRELOAD_PFX)
-  throw new Error("environment variable 'PERSONAL_HOTRELOAD_PFX' must be set");
-
 
 //------//
 // Main //
 //------//
 
-if (!isHttp) initHotreloadServer();
 
 let run = initBeerkbS2r();
 
@@ -125,8 +114,6 @@ if (isHttp) {
       router = https.createServer({ cert, key }, (req, res) => {
         handleRequest(getDomainWithoutTopLevelFromHost(req.headers.host), req, res);
       });
-
-      checkCertAndKeyDaily(router, { pathToCert, pathToKey })
     });
 }
 
@@ -142,9 +129,9 @@ if (!isHttp) {
       const domainWithoutTopLevel = getDomainWithoutTopLevelFromHost(ctx.req.headers.host);
       return redirectOr404(domainWithoutTopLevel, ctx);
     })
-    .listen(80);
+    .listen(8123);
 
-  console.log('http -> https redirect server listening on port ' + highlight('80'));
+  console.log('http -> https redirect server listening on port ' + highlight('8123'));
 }
 
 //-------------//
@@ -171,74 +158,8 @@ function redirectOr404(domainWithoutToplevel, ctx) {
   return r.propOr(koa404, domainWithoutToplevel, domainsToHttpsRedirect)(ctx);
 }
 
-function initHotreloadServer() {
-  r.pipe(
-    r.values
-    , r.forEach(
-      app => koaRouter.post(
-        '/' + app.nick
-        , (ctx, next) => {
-          return bExec('git pull', {
-              cwd: path.join(__dirname, 'public-apps', app.dir)
-              , uid: 0
-              , gid: 0
-            })
-            .then(() => {
-              publicApps[app.nick].setRequestListener();
-              ctx.body = app.nick + ' reloaded successfully';
-            })
-            .catch(err => {
-              ctx.body = app.nick + ' was unable to reload: ' + err;
-              ctx.status = 500;
-            })
-            .then(next);
-        }
-      )
-    )
-  )(publicApps);
-
-  koaRouter.post(
-    '/beerkbS2r'
-    , (ctx, next) => {
-      return beerkbS2r.server.destroy()
-        .then(() => bExec('git pull', {
-          cwd: path.join(__dirname, 'internal-servers/beerkb-internal-s2r')
-          , uid
-          , gid
-        }))
-        .then(initBeerkbS2r)
-        .then(() => {
-          publicApps.beerkb.setRequestListener();
-          publicApps.beerkbTest.setRequestListener();
-          ctx.body = 'beerkbS2r, beerkb and beerkbTest reloaded successfully';
-          return next();
-        });
-    }
-  );
-
-  const hotreloadRequestHandler = hotreloadApp.use(ensureCorrectDomainAndAuthorized)
-    .use(koaRouter.routes())
-    .use(koaRouter.allowedMethods())
-    .callback();
-
-  return bFs.readFileAsync(PERSONAL_HOTRELOAD_PFX)
-    .then(pfx => {
-      https.createServer({ requestCert: true, rejectUnauthorized: true, pfx }, hotreloadRequestHandler)
-        .listen(publicHotreloadPort);
-
-      console.log('hotreload server listening on port ' + highlight(publicHotreloadPort));
-    });
-}
-
 function ensureCorrectDomainAndAuthorized(ctx, next) {
   const domainWithoutTopLevel = getDomainWithoutTopLevelFromHost(ctx.req.headers.host);
-
-  // TODO: find out if this is necessary.  I think any calls outside of this
-  //   domain will be unauthorized.
-  if (domainWithoutTopLevel !== 'hotreload.philipolsonm') {
-    ctx.status = 404;
-    return;
-  }
 
   return next();
 }
@@ -263,7 +184,7 @@ function getPublicApps() {
         , nick: 'beerkb'
         , dir: 'beerkb/prod/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack').getRequestListener(beerkbS2r.port, letsencryptDir);
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack').getRequestListener(beerkbS2r.port, letsencryptDir);
         }
       }
       , {
@@ -271,7 +192,7 @@ function getPublicApps() {
         , nick: 'beerkbTest'
         , dir: 'beerkb/test/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack').getRequestListener(beerkbS2r.port, letsencryptDir);
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack').getRequestListener(beerkbS2r.port, letsencryptDir);
         }
       },
       {
@@ -279,7 +200,7 @@ function getPublicApps() {
         , nick: 'home'
         , dir: 'philipolsonm/home/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack').getRequestListener(letsencryptDir);
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack').getRequestListener(letsencryptDir);
         }
       },
       {
@@ -287,7 +208,7 @@ function getPublicApps() {
         , nick: 'homeTest'
         , dir: 'philipolsonm/home-test/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack').getRequestListener(letsencryptDir);
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack').getRequestListener(letsencryptDir);
         }
       },
       {
@@ -295,7 +216,7 @@ function getPublicApps() {
         , nick: 'twearch'
         , dir: 'philipolsonm/twearch/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack')
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack')
             .getRequestListener(letsencryptDir, router, this.domain + '.com');
         }
       },
@@ -304,7 +225,7 @@ function getPublicApps() {
         , nick: 'tweetTickerTest'
         , dir: 'philipolsonm/tweet-ticker-test/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack')
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack')
             .getRequestListener(letsencryptDir, router, this.domain + '.com');
         }
       },
@@ -313,7 +234,7 @@ function getPublicApps() {
         , nick: 'tweetTicker'
         , dir: 'philipolsonm/tweet-ticker/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack')
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack')
             .getRequestListener(letsencryptDir, router, this.domain + '.com');
         }
       },
@@ -322,7 +243,7 @@ function getPublicApps() {
         , nick: 'weatherAccuracy'
         , dir: 'philipolsonm/weather-accuracy/'
         , setRequestListener() {
-          this.requestListener = reload('./public-apps/' + this.dir + 'index.pack')
+          this.requestListener = require('./public-apps/' + this.dir + 'index.pack')
             .getRequestListener(letsencryptDir);
         }
       }
