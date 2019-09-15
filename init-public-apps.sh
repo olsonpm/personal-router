@@ -19,8 +19,10 @@ git clone https://github.com/olsonpm/personal-home2.git home
 cp -r home home-test
 cd home || exit
 git checkout release-prod
+npm ci
 cd ../home-test || exit
 git checkout release-test
+npm ci
 cd ../ || exit
 
 git clone https://github.com/olsonpm/twearch.git twearch
